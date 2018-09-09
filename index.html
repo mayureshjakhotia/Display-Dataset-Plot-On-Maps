@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Physician Dataset Case Study</title>
+    <style>
+      #map {
+        height: 300px;
+        width: 100%;
+       }
+    </style>
+</head>
+<body onload="processCsvFile();">
+<h3>Case Study Analysis</h3>
+
+<!-- Display Dataset In Tabular Format -->
+<h4>Display Dataset</h4>
+<input type="text" style="width: 20%" placeholder="Number of Rows (Double Click to Show)" ondblclick="createTable(this.value);">
+<button onclick="clearTable();">Clear</button>
+
+<!-- Search Record -->
+<hr>
+<h4>Search A Physician</h4>
+<input type="text" placeholder="First Name" id="firstname">
+<input type="text" placeholder="Middle Name" id="middlename">
+<input type="text" placeholder="Last Name" id="lastname">
+<button onclick="searchRecord();">Find</button>
+<hr>
+<h3>Location</h3>
+<div id="map"></div>
+<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDp3f4LVp5HzEuoELVjwe4PjZz6HyBeuEY&callback=initMap"></script>
+<hr>
+
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
+  crossorigin="anonymous"></script>
+ 
+
+<script type="text/javascript">
+
+    /*
+     * Read CSV File using Defer since d3 is asynchronous
+     * Once its read, just log it to console temporarily
+     */
+
+    var csvData = [];
+    var i = 0;
+
+    function processCsvFile() {
+
+        var getCsv = function (csvUrl) {
+        var defer = $.Deferred();
+        d3.csv(csvUrl, function (rows, error) {
+            if (error) {
+                defer.reject(error);
+            }
+            csvData[i] = rows;
+            i++; 
+            defer.resolve(csvData);
+            });
+            return defer.promise();
+        };
+
+        $.when(getCsv("dataset.csv"),
+        ).done(function (res) {
+            console.log(res);
+        }).fail(function (err) {
+            console.log(err);
+        });
+
+    }
+
+    /*
+     * Gets the name details & searches through the dataset if present
+     * If present, then calls function to plot it on Google Maps
+     */
+    function searchRecord() {
+        var firstname = document.getElementById('firstname').value;
+        var middlename = document.getElementById('middlename').value;
+        var lastname = document.getElementById('lastname').value;
+
+        for (var i=0; i < csvData.length; i++) {
+        if (csvData[i].Physician_First_Name === firstname &&
+            csvData[i].Physician_Middle_Name === middlename &&
+            csvData[i].Physician_Last_Name === lastname) {
+                console.log(csvData[i]);
+                plotInMap(csvData[i]);
+            }
+        }
+    }
+
+    /*
+     * Initializes Map with center as Chicago
+     */
+    function initMap() {
+      var chicago = {lat: 41.850033, lng: -87.6500523};
+      var map = new google.maps.Map(document.getElementById('map'), {zoom: 4, center: chicago});
+    }
+
+    /*
+     * Update Marker On Map
+     */
+    function updateMap(latitude, longitude) {
+      var chicago = {lat: 41.850033, lng: -87.6500523};
+      var newLatLon = {lat: latitude, lng: longitude};
+      var map = new google.maps.Map(document.getElementById('map'), {zoom: 4, center: chicago});
+      var marker = new google.maps.Marker({position: newLatLon, map: map});
+    }
+
+    /*
+     * Decodes the address to lat lon & shows it on google maps
+     */
+    function plotInMap(recordToSearch) {
+        var firstname = recordToSearch.Physician_First_Name;
+        var address1 = recordToSearch.Recipient_Primary_Business_Street_Address_Line1.split(' ').join('+');
+        var address2 = recordToSearch.Recipient_Primary_Business_Street_Address_Line2.split(' ').join('+');
+        var city = recordToSearch.Recipient_City.split(' ').join('+');
+        var state = recordToSearch.Recipient_State.split(' ').join('+');
+        var zipcode = recordToSearch.Recipient_Zip_Code.split(' ').join('+');
+        var country = recordToSearch.Recipient_Country.split(' ').join('+');
+
+        var completeAddress = "";
+
+        if(address1 !== '') completeAddress += address1 + ",";
+        if(address2 !== '') completeAddress += address2 + ",";
+        if(city !== '') completeAddress += city + ",";
+        if(state !== '') completeAddress += state + ",";
+        if(zipcode !== '') completeAddress += zipcode + ",";
+        if(country !== '') completeAddress += country;
+
+        const Http = new XMLHttpRequest();
+        const url='https://maps.googleapis.com/maps/api/geocode/xml?address='+completeAddress+'&key=AIzaSyDp3f4LVp5HzEuoELVjwe4PjZz6HyBeuEY';
+        Http.open("GET", url);
+        Http.send();
+        Http.onreadystatechange=(e)=>{
+            if(Http.readyState === 4 && Http.status === 200) {
+                var parser = new DOMParser();
+                var xmlDoc = parser.parseFromString(Http.responseText,"text/xml");
+                var geometry = xmlDoc.getElementsByTagName("geometry");
+                var location = geometry[0].getElementsByTagName("location");
+                var lat = parseFloat(location[0].getElementsByTagName("lat")[0].innerHTML);
+                var lng = parseFloat(location[0].getElementsByTagName("lng")[0].innerHTML);
+                updateMap(lat, lng);
+            }
+        }
+    }
+
+    // Clear Table & Reload The Page
+    function clearTable() {
+        document.getElementById('table').innerHTML = '';
+        window.location.reload();
+    }
+
+    /*
+     * Create Table depending on the number of rows needed
+     */
+    function createTable(rowCount) {
+        var body = document.getElementsByTagName('body')[0];
+        var tbl = document.createElement('table');
+        tbl.setAttribute("id", "table");
+        tbl.style.width = '100%';
+        tbl.setAttribute('border', '1');
+        var tbdy = document.createElement('tbody');
+        headingCreated = false;
+
+        var numberOfRows = csvData.length;
+        if (rowCount > 0) {
+            numberOfRows = rowCount;
+        }
+
+        for (var i = 0; i < numberOfRows; i++) {
+            if (!headingCreated) {
+                var tr = document.createElement('tr');
+                for (var j = 0; j < Object.keys(csvData[0]).length; j++) {
+                    var th = document.createElement('th');
+                    th.appendChild(document.createTextNode(Object.keys(csvData[i])[j]));
+                    tr.appendChild(th);
+                    tbdy.appendChild(tr);
+                }
+                tbdy.appendChild(tr);
+                headingCreated = true;
+            }
+            
+            var tr = document.createElement('tr');
+       
+            for (var j = 0; j < Object.keys(csvData[0]).length; j++) {
+                var td = document.createElement('td');
+                td.appendChild(document.createTextNode(Object.values(csvData[i])[j]));
+                tr.appendChild(td);
+                
+            }
+            tbdy.appendChild(tr);
+        }
+        tbl.appendChild(tbdy);
+        body.appendChild(tbl)
+    }
+
+</script>
+
+
+</body>
+</html>
